@@ -25,7 +25,7 @@ Examing cluster_dat.
 
 ```{r}
 
-str(dat)
+str(cluster_dat)
 ```
 
 
@@ -43,11 +43,11 @@ colnames(cluster_dat)
 We look to fix the DateTime fields. The first five columns looks to be parsed versions of a DateTime. The 'Time Bin' looks to be the most complete DateTime variable. Examine further...
 
 ```{r}
-class(cluster_dat$`Time Bin`)
+class(cluster_dat$Time_Bin)
 ```
 
 ```{r}
-summary(cluster_dat$`Time Bin`)
+summary(cluster_dat$Time_Bin)
 ```
 
 Everything seems to be in order. But we will keep an eye out for potential errors.
@@ -111,18 +111,51 @@ We move on to speed
 ```{r speed explore}
 
 
-summary(cluster_dat$Volume)
+summary(cluster_dat$Speed)
 
-br_vol <- seq(0,600000,20000)
-ranges_vol = paste(head(br_vol,-1), br_vol[-1], sep=" - ")
-freq_vol <- hist(cluster_dat$Volume, breaks=br_vol, include.lowest=TRUE, plot=FALSE)
+br_speed <- seq(30,100,2)
+ranges_speed = paste(head(br_speed,-1), br_speed[-1], sep=" - ")
+freq_speed <- hist(cluster_dat$Speed, breaks=br_speed, include.lowest=TRUE, plot=FALSE)
 
-freq_table_vol <-  data.frame(data.frame(range = ranges_vol, frequency = freq_vol$counts))
-freq_table_vol[order(-freq_table_vol$frequency),]
+freq_table_speed <-  data.frame(data.frame(range = ranges_speed, frequency = freq_speed$counts))
+freq_table_speed[order(-freq_table_speed$frequency),]
 
-plot(freq_vol)
-
+plot(freq_speed)
 
 
 ```
 
+The speed plot looks more normal in shape than the previous distributions but does appear to have a left skew. Again there are no major outliers to be worried about nor are there are any 0 or NAs.
+
+Lets plot speed vs time
+
+```{r time vs speed}
+plot(cluster_dat$Time_Bin,cluster_dat$Speed)
+```
+
+Looks like we have some reduced speeds in the Summer months, maybe due to construction activities. 
+There are also some slower days in the winter months which could very easily be due to bad weather. 
+
+##Incidents
+
+```{r}
+summary(cluster_dat$Incident_Count)
+```
+
+```{r}
+hist(cluster_dat$Incident_Count,breaks = 30)
+```
+
+Majority of days have no Incidents.  
+
+##Roadwork
+
+```{r}
+summary(cluster_dat$Roadwork_Count)
+```
+
+```{r}
+table(cluster_dat$Roadwork_Count)
+```
+
+Majority of days have no Roadwork. One really bad day with 7. No obvious outliers. 
