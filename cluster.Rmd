@@ -1,0 +1,128 @@
+---
+title: "L04 Cluster"
+output: html_notebook
+---
+
+```{r}
+knitr::opts_knit$set(root.dir = "C:/Users/Declan/Desktop/Data/R/Cluster_analysis")
+
+library(tidyverse)
+library(lubridate)
+library(gridExtra)
+library(reshape2)
+library(zoo)
+library(data.table)
+
+```
+
+Read data from Cluster Analysis Input Data.xlsx. From examining the file via Excel, we see that the data is located in the tab named "Database". We call that tab in the read_xlsx function.
+
+```{r}
+cluster_dat <- readxl::read_xlsx("Cluster Analysis Input Data.xlsx",sheet = 'Database')
+```
+
+Examing cluster_dat.
+
+```{r}
+
+str(dat)
+```
+
+
+First, we clean up the column headers by removing any potential trailing or leading spaces and replacing special characters in the strings with '_'.
+
+```{r}
+
+colnames(cluster_dat) <-trimws(colnames(cluster_dat))
+
+colnames(cluster_dat) <-gsub('([[:punct:]])|\\s+','_',colnames(cluster_dat))
+
+colnames(cluster_dat)
+```
+
+We look to fix the DateTime fields. The first five columns looks to be parsed versions of a DateTime. The 'Time Bin' looks to be the most complete DateTime variable. Examine further...
+
+```{r}
+class(cluster_dat$`Time Bin`)
+```
+
+```{r}
+summary(cluster_dat$`Time Bin`)
+```
+
+Everything seems to be in order. But we will keep an eye out for potential errors.
+
+Lets look at the Density, Volume, Speed variables. Again there are columns without names mixed inbetween these fields. We will ignore the unnamed variables.
+
+##Density
+
+```{r density explore}
+summary(cluster_dat$Density)
+
+br_dens <- seq(0,50,2)
+ranges_dens = paste(head(br,-1), br[-1], sep=" - ")
+freq_dens <- hist(cluster_dat$Density, breaks=br_dens, include.lowest=TRUE, plot=FALSE)
+
+freq_table_dens <-  data.frame(data.frame(range = ranges_dens, frequency = freq_dens$counts))
+freq_table_dens[order(-freq_table_dens$frequency),]
+
+plot(freq_dens)
+```
+
+The histogram is right skewed but no major outliers are present. There are also no 0 or NA values. 
+
+We now plot the Density vs Time.
+
+```{r time vs density}
+
+plot(cluster_dat$Time_Bin,cluster_dat$Density)
+```
+
+Again, there do not seem to major outliers. There looks to be some patterns here. We will investigate further later. 
+
+##Volume
+
+```{r volume explore}
+summary(cluster_dat$Volume)
+
+br_vol <- seq(0,600000,20000)
+ranges_vol = paste(head(br_vol,-1), br_vol[-1], sep=" - ")
+freq_vol <- hist(cluster_dat$Volume, breaks=br_vol, include.lowest=TRUE, plot=FALSE)
+
+freq_table_vol <-  data.frame(data.frame(range = ranges_vol, frequency = freq_vol$counts))
+freq_table_vol[order(-freq_table_vol$frequency),]
+
+plot(freq_vol)
+
+```
+
+It appears that the bin 40,000-60,000 contains the most records.
+
+```{r plot time vs volume}
+plot(cluster_dat$Time_Bin,cluster_dat$Volume)
+```
+
+Again some interesting patterns but no major outliers. 
+
+We move on to speed
+
+##Speed
+
+```{r speed explore}
+
+
+summary(cluster_dat$Volume)
+
+br_vol <- seq(0,600000,20000)
+ranges_vol = paste(head(br_vol,-1), br_vol[-1], sep=" - ")
+freq_vol <- hist(cluster_dat$Volume, breaks=br_vol, include.lowest=TRUE, plot=FALSE)
+
+freq_table_vol <-  data.frame(data.frame(range = ranges_vol, frequency = freq_vol$counts))
+freq_table_vol[order(-freq_table_vol$frequency),]
+
+plot(freq_vol)
+
+
+
+```
+
