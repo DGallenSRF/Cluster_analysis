@@ -13,7 +13,7 @@ library(gridExtra)
 library(reshape2)
 library(zoo)
 library(data.table)
-
+library(plotly)
 ```
 
 ##Read Data
@@ -49,6 +49,8 @@ We look to fix the DateTime fields. The first five columns looks to be parsed ve
 
 ```{r check class of Time_Bin}
 class(cluster_dat$Time_Bin)
+
+cluster_dat$Time_Bin <- as.POSIXct(as.character(cluster_dat$Time_Bin),tz="US/Central")
 ```
 
 ```{r summary of Time_Bin}
@@ -60,14 +62,14 @@ Everything seems to be in order. But we will keep an eye out for potential error
 
 The last column is labelled week. Explore:
 
-```{r}
+```{r summary of weeks}
 summary(cluster_dat$Week)
 
 ```
 
 Week 53 does not look right. Lets investigate further.
 
-```{r}
+```{r check week 53}
 cluster_dat[cluster_dat$Week==53,c(1:5,length(cluster_dat))]
 
 ```
@@ -160,7 +162,9 @@ cluster_dat <- cluster_dat %>%
   mutate(Hour = format(Time_Bin,"%H"),
          Weekday = weekdays(cluster_dat$Time_Bin),
          Week = lubridate::week(cluster_dat$Time_Bin),
-         Month = months(cluster_dat$Time_Bin))
+         Month = months(cluster_dat$Time_Bin),
+         YearDay = yday(cluster_dat$Time_Bin))%>%
+  filter(Hour == 14)
 
 cluster_dat$Weekday <-  factor(cluster_dat$Weekday,levels=c("Sunday", "Monday", 
     "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
@@ -289,4 +293,59 @@ ggplot(cluster_dat,aes(x=Week,y=Speed,color=Weekday))+
   geom_point(aplha=0.25)+
   geom_smooth()
 ```
+
+Again we are seeing a pattern with reduced speeds on weekends. 
+
+Lets look at public holidays:
+
+```{r}
+hols_2017 <- as.POSIXct(c('2017-01-02 14:00','2017-05-29 14:00','2017-07-03 14:00','2017-07-04 14:00','2017-09-04 14:00','2017-11-23 14:00','2017-11-24 14:00','2017-12-25 14:00'))
+table(cluster_dat$Time_Bin %in% hols_2017)
+
+cluster_dat$hols_2017 <- cluster_dat$Time_Bin %in% hols_2017
+
+g <- ggplot(cluster_dat,aes(x=Weekday,y=Density))+
+  geom_point(aes(alpha=0.25,color=hols_2017))
+plotly::ggplotly(g)
+
+s <- ggplot(cluster_dat,aes(x=Weekday,y=Speed))+
+  geom_point(aes(alpha=0.25,color=hols_2017))
+plotly::ggplotly(s)
+```
+
+Public holidays seem to be the weekdays with highest speeds.
+
+
+##K Means Clustering
+
+```{r kmeans}
+
+set.seed(25)
+
+
+##filter out the weekends
+'%ni%' <- Negate('%in%')
+cluster_dat_midweek <- cluster_dat %>% 
+  filter(Weekday %ni% c('Saturday','Sunday'))
+
+#run kmeans
+speed_cluster <-  kmeans(cluster_dat_midweek%>%select(Speed,YearDay)%>%scale(),centers = 5,nstart = 20)
+
+##add cluster to fitlered dataframe
+cluster_dat_midweek$cluster <- as.factor(speed_cluster$cluster)
+
+plotly::plot_ly(cluster_dat_midweek,x=~Time_Bin,y=~Speed,color=~cluster,type='scatter',mode='markers',
+               text=~paste('Weekday:',Weekday))
+
+ggplot(cluster_dat_midweek,aes(x=YearDay,y=Speed,color=cluster))+
+  geom_point()+
+  facet_wrap(~Weekday,scales='free')+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+
+```{r}
+table(cluster_dat$Month)
+```
+
 
