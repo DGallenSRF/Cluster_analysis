@@ -4,7 +4,8 @@ output: html_notebook
 ---
 
 ```{r}
-knitr::opts_knit$set(root.dir = "C:/Users/Declan/Desktop/Data/R/Cluster_analysis")
+#knitr::opts_knit$set(root.dir = "C:/Users/Declan/Desktop/Data/R/Cluster_analysis")
+knitr::opts_knit$set(root.dir = "H:/Projects/10000/10682/TS/Scenario Manager/Cluster Analysis/Cleaned")
 
 library(tidyverse)
 library(lubridate)
@@ -15,15 +16,17 @@ library(data.table)
 
 ```
 
+##Read Data
+
 Read data from Cluster Analysis Input Data.xlsx. From examining the file via Excel, we see that the data is located in the tab named "Database". We call that tab in the read_xlsx function.
 
-```{r}
+```{r read data}
 cluster_dat <- readxl::read_xlsx("Cluster Analysis Input Data.xlsx",sheet = 'Database')
 ```
 
-Examing cluster_dat.
+Examine cluster_dat.
 
-```{r}
+```{r structer of data}
 
 str(cluster_dat)
 ```
@@ -31,7 +34,7 @@ str(cluster_dat)
 
 First, we clean up the column headers by removing any potential trailing or leading spaces and replacing special characters in the strings with '_'.
 
-```{r}
+```{r fix column names}
 
 colnames(cluster_dat) <-trimws(colnames(cluster_dat))
 
@@ -40,27 +43,140 @@ colnames(cluster_dat) <-gsub('([[:punct:]])|\\s+','_',colnames(cluster_dat))
 colnames(cluster_dat)
 ```
 
+##DateTime
+
 We look to fix the DateTime fields. The first five columns looks to be parsed versions of a DateTime. The 'Time Bin' looks to be the most complete DateTime variable. Examine further...
 
-```{r}
+```{r check class of Time_Bin}
 class(cluster_dat$Time_Bin)
 ```
 
-```{r}
+```{r summary of Time_Bin}
 summary(cluster_dat$Time_Bin)
+table(is.na(cluster_dat$Time_Bin))
 ```
 
 Everything seems to be in order. But we will keep an eye out for potential errors.
 
-Lets look at the Density, Volume, Speed variables. Again there are columns without names mixed inbetween these fields. We will ignore the unnamed variables.
+The last column is labelled week. Explore:
 
-##Density
+```{r}
+summary(cluster_dat$Week)
+
+```
+
+Week 53 does not look right. Lets investigate further.
+
+```{r}
+cluster_dat[cluster_dat$Week==53,c(1:5,length(cluster_dat))]
+
+```
+
+Week 53 represents the last day of the year.
+
+##Traffic Incidents
+
+###Incidents
+```{r}
+summary(cluster_dat$Incident_Count)
+```
+
+```{r}
+hist(cluster_dat$Incident_Count,breaks = 30)
+```
+
+Majority of days have no incidents.  
+
+Explore the content of Incident Impact
+
+```{r}
+summary(cluster_dat$Incident_Impact)
+
+par(mfrow=c(2,2))
+
+hist(cluster_dat$Incident_Impact,breaks=seq(0,40,1),
+     xlab='Incident_Impact')
+
+plot(cluster_dat$Incident_Count[cluster_dat$Incident_Count!=0],cluster_dat$Incident_Impact[cluster_dat$Incident_Count!=0],
+     xlab="Incident_Count",ylab='Incident_Impact')
+
+plot(cluster_dat$Time_Bin[cluster_dat$Incident_Count!=0],cluster_dat$Incident_Count[cluster_dat$Incident_Count!=0],
+     xlab="Time",ylab='Incident_Count')
+
+plot(cluster_dat$Density[cluster_dat$Incident_Count!=0],cluster_dat$Incident_Count[cluster_dat$Incident_Count!=0],
+     xlab="Density",ylab='Incident_Count')
+```
+
+It appears that the incident count measures the amount on incidents in a specific time bin. The incident impact tracks how many impacts happened in a specific time_bin. This will allow us to determine how bad each time_bin is in terms of incidents.  
+
+There are no easily detectable patterns when plotting incidents vs time but we do see a strong positive correlation between Density and Incidents counts. This makes sense as intuitively the more cars, the more incidents. 
+
+###Roadwork
+
+```{r}
+summary(cluster_dat$Roadwork_Count)
+```
+
+```{r}
+table(cluster_dat$Roadwork_Count)
+```
+
+```{r roadwork plots}
+par(mfrow=c(2,2))
+
+hist(cluster_dat$Roadwork_Count[cluster_dat$Roadwork_Count!=0],xlab='Roadwork_Impact',main='Roadwork_Count')
+
+plot(cluster_dat$Roadwork_Count[cluster_dat$Roadwork_Count!=0],cluster_dat$Roadwork_Impact[cluster_dat$Roadwork_Count!=0],
+     xlab="Roadwork_Count",ylab='Roadwork_Impact')
+
+plot(cluster_dat$Time_Bin[cluster_dat$Roadwork_Count!=0],cluster_dat$Roadwork_Count[cluster_dat$Roadwork_Count!=0],
+     xlab="Time",ylab='Roadwork_Count')
+
+plot(cluster_dat$Density[cluster_dat$Roadwork_Count!=0],cluster_dat$Roadwork_Count[cluster_dat$Roadwork_Count!=0],
+     xlab="Density",ylab='Roadwork_Count')
+
+```
+
+```{r Roadwork Duration}
+
+x <- as.numeric(format(cluster_dat$Roadwork_Duration,"%H"))
+x <- x[x>0]
+table(x)
+```
+
+
+Majority of days have no Roadwork. One really bad day with 7. No obvious outliers. 
+
+
+
+##Metrics
+
+Lets look at the Density, Volume, Speed variables. Again there are columns without names mixed in between these fields. We will ignore the unnamed variables.
+
+###Date Time Fields
+
+```{r create date time fields}
+cluster_dat <- cluster_dat %>%
+  mutate(Hour = format(Time_Bin,"%H"),
+         Weekday = weekdays(cluster_dat$Time_Bin),
+         Week = lubridate::week(cluster_dat$Time_Bin),
+         Month = months(cluster_dat$Time_Bin))
+
+cluster_dat$Weekday <-  factor(cluster_dat$Weekday,levels=c("Sunday", "Monday", 
+    "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+cluster_dat$Month <- factor(cluster_dat$Month,levels=c("January","February","March",
+               "April","May","June","July","August","September",
+               "October","November","December"),ordered=TRUE)
+```
+
+
+###Density
 
 ```{r density explore}
 summary(cluster_dat$Density)
 
 br_dens <- seq(0,50,2)
-ranges_dens = paste(head(br,-1), br[-1], sep=" - ")
+ranges_dens = paste(head(br_dens,-1), br_dens[-1], sep=" - ")
 freq_dens <- hist(cluster_dat$Density, breaks=br_dens, include.lowest=TRUE, plot=FALSE)
 
 freq_table_dens <-  data.frame(data.frame(range = ranges_dens, frequency = freq_dens$counts))
@@ -73,14 +189,21 @@ The histogram is right skewed but no major outliers are present. There are also 
 
 We now plot the Density vs Time.
 
-```{r time vs density}
+```{r weekday vs density}
 
-plot(cluster_dat$Time_Bin,cluster_dat$Density)
+ggplot(cluster_dat,aes(x=Weekday,y=Density,color=Weekday))+
+  geom_violin()+
+  geom_jitter(alpha=0.25)
 ```
 
-Again, there do not seem to major outliers. There looks to be some patterns here. We will investigate further later. 
+Again, there do not seem to major outliers. There looks to be some patterns here. 
 
-##Volume
+The Density is obviously lower on weekends compared to weekdays.
+
+
+
+
+###Volume
 
 ```{r volume explore}
 summary(cluster_dat$Volume)
@@ -98,15 +221,16 @@ plot(freq_vol)
 
 It appears that the bin 40,000-60,000 contains the most records.
 
-```{r plot time vs volume}
-plot(cluster_dat$Time_Bin,cluster_dat$Volume)
-```
+
+
+
 
 Again some interesting patterns but no major outliers. 
 
-We move on to speed
+We move on to speed....
 
-##Speed
+
+###Speed
 
 ```{r speed explore}
 
@@ -129,33 +253,40 @@ The speed plot looks more normal in shape than the previous distributions but do
 
 Lets plot speed vs time
 
-```{r time vs speed}
-plot(cluster_dat$Time_Bin,cluster_dat$Speed)
+```{r plot weekday vs volume}
+
+means <-  aggregate(Speed~Weekday,cluster_dat,mean)
+ggplot(cluster_dat,aes(x=Weekday,y=Speed))+
+  geom_violin(aes(color=Weekday))+
+  geom_jitter(aes(color=Weekday),alpha=0.25)+
+  stat_summary(fun.y=mean, colour="#990000", geom="point", 
+               shape=18, size=3,show_guide = FALSE)+
+  geom_text(data=means, aes(label = paste('Mean:\n',round(Speed,2),sep=''), y = Speed + 2.5),size=3,fontface='bold')+
+  ylab('Speed mph')+
+  theme(legend.position="none")
+```
+
+
+```{r plot month vs volume}
+
+means <-  aggregate(Speed~Month,cluster_dat,mean)
+ggplot(cluster_dat,aes(x=Month,y=Speed))+
+  geom_violin(aes(color=Month))+
+  geom_jitter(aes(color=Month),alpha=0.25)+
+  stat_summary(fun.y=mean, colour="#990000", geom="point", 
+               shape=18, size=3,show_guide = FALSE)+
+  geom_text(data=means, aes(label = paste('Mean:\n',round(Speed,2),sep=''), y = Speed + 2.5),color='darkred',size=3,fontface='bold')+
+  ylab('Speed mph')+
+  theme(legend.position="none")
 ```
 
 Looks like we have some reduced speeds in the Summer months, maybe due to construction activities. 
 There are also some slower days in the winter months which could very easily be due to bad weather. 
-
-##Incidents
-
-```{r}
-summary(cluster_dat$Incident_Count)
-```
+But there are no noticeable patterns. 
 
 ```{r}
-hist(cluster_dat$Incident_Count,breaks = 30)
+ggplot(cluster_dat,aes(x=Week,y=Speed,color=Weekday))+
+  geom_point(aplha=0.25)+
+  geom_smooth()
 ```
 
-Majority of days have no Incidents.  
-
-##Roadwork
-
-```{r}
-summary(cluster_dat$Roadwork_Count)
-```
-
-```{r}
-table(cluster_dat$Roadwork_Count)
-```
-
-Majority of days have no Roadwork. One really bad day with 7. No obvious outliers. 
