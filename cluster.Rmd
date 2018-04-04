@@ -1,9 +1,15 @@
 ---
 title: "L04 Cluster"
-output: html_notebook
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: 
+      collapsed: false
+      smooth_scroll: true
 ---
 
-```{r}
+```{r include=FALSE,message=FALSE,echo=FALSE}
 #knitr::opts_knit$set(root.dir = "C:/Users/Declan/Desktop/Data/R/Cluster_analysis")
 knitr::opts_knit$set(root.dir = "H:/Projects/10000/10682/TS/Scenario Manager/Cluster Analysis/Cleaned")
 
@@ -13,9 +19,10 @@ library(gridExtra)
 library(reshape2)
 library(zoo)
 library(plotly)
+library(NbClust)
 ```
 
-##Read Data
+## Read Data
 
 Read data from Cluster Analysis Input Data.xlsx. From examining the file via Excel, we see that the data is located in the tab named "Database". We call that tab in the read_xlsx function.
 
@@ -42,7 +49,7 @@ colnames(cluster_dat) <-gsub('([[:punct:]])|\\s+','_',colnames(cluster_dat))
 colnames(cluster_dat)
 ```
 
-##DateTime
+## DateTime
 
 We look to fix the DateTime fields. The first five columns looks to be parsed versions of a DateTime. The 'Time Bin' looks to be the most complete DateTime variable. Examine further...
 
@@ -73,11 +80,11 @@ cluster_dat[cluster_dat$Week==53,c(1:5,length(cluster_dat))]
 
 ```
 
-Week 53 represents the last day of the year.
+Week 53 represents the last day of the year. We will ignore this field.
 
-##Traffic Incidents
+## Traffic Incidents
 
-###Incidents
+### Incidents
 ```{r}
 summary(cluster_dat$Incident_Count)
 ```
@@ -150,11 +157,11 @@ Majority of days have no Roadwork. One really bad day with 7. No obvious outlier
 
 
 
-##Metrics
+## Metrics
 
 Lets look at the Density, Volume, Speed variables. Again there are columns without names mixed in between these fields. We will ignore the unnamed variables.
 
-###Date Time Fields
+### Date Time Fields
 
 ```{r create date time fields}
 cluster_dat <- cluster_dat %>%
@@ -178,7 +185,7 @@ cluster_dat$Month <- factor(cluster_dat$Month,levels=c("January","February","Mar
 ```
 
 
-###Density
+### Density
 
 ```{r density explore}
 summary(cluster_dat$Density)
@@ -211,7 +218,7 @@ The Density is obviously lower on weekends compared to weekdays.
 
 
 
-###Volume
+### Volume
 
 ```{r volume explore}
 summary(cluster_dat$Volume)
@@ -238,10 +245,11 @@ Again some interesting patterns but no major outliers.
 We move on to speed....
 
 
-###Speed
+### Speed
+
+We will explore the Speed variable. 
 
 ```{r speed explore}
-
 
 summary(cluster_dat$Speed)
 
@@ -321,7 +329,9 @@ Public holidays seem to be the weekdays with highest speeds.
 
 
 
-###Weather
+### Weather
+
+We need to generate a total minute count for weather events in each time bin. 
 
 ```{r add cumulative minutes for weather}
 ##add 1 or 0 if there was a weather event
@@ -333,13 +343,15 @@ cluster_dat_melt <- reshape2::melt(cluster_dat,id.vars="Time_Bin",measure.vars=c
   summarise(sum = sum(total))
   
 cluster_dat$weather <- cluster_dat_melt$sum
-#cluster_dat$weather <- ifelse(cluster_dat_melt$sum>0,1,0)
+
 ```
 
 
-##K Means Clustering
+## K Means Clustering
 
-```{r kmeans}
+First we filter out the weekends. We already determined that they will have their own cluster. 
+
+```{r filter midweek}
 
 set.seed(25)
 
@@ -348,23 +360,51 @@ set.seed(25)
 '%ni%' <- Negate('%in%')
 cluster_dat_midweek <- cluster_dat %>% 
   filter(Weekday %ni% c('Saturday','Sunday'))
+```
 
+
+```{r}
+nc <- NbClust(cluster_dat_midweek%>%select(Speed,YearDay,weather)%>%scale(), min.nc=2, max.nc=15, method="kmeans")
+```
+
+We run the kmeans function with 4 centers and create a variable for the cluster designation. We will add this to our dataframe to facilitate plotting.
+
+```{r }
 #run kmeans
-speed_cluster <-  kmeans(cluster_dat_midweek%>%select(Speed,YearDay,weather)%>%scale(),centers = 5,nstart = 10)
+speed_cluster <-  kmeans(cluster_dat_midweek%>%select(Speed,YearDay,weather)%>%scale(),centers = 4,nstart = 10)
 
 ##add cluster to fitlered dataframe
 cluster_dat_midweek$cluster <- as.factor(speed_cluster$cluster)
+```
 
-plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,color=~cluster,mode='markers',text=~paste('Weekday:',Weekday))
+We will look at some plots to display the clusters.
 
-plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~weather,color=~cluster,hoverinfo='text',
+Fist a simple 2d plot
+
+```{r 2d plots}
+plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,color=~cluster,type='scatter',mode='markers',text=~paste('Weekday:',Weekday))
+```
+
+The 2d plot does not do a good job of showing where the clusters split.
+
+we will try a 3d plot.
+
+```{r 3d plot}
+#3d plot to better show
+plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~weather,
+                color=~cluster,hoverinfo='text',
                 text = ~paste('Speed:', round(Speed,2), '<br>Weather mins:', weather, '<br>Time_Bin:', format(Time_Bin,"%Y-%m-%d")))%>% 
   add_markers()%>%
     layout(scene = list(xaxis = list(title = 'Day of Year'),
                      yaxis = list(title = 'Speed MPH'),
                      zaxis = list(title = 'Weather mins')))
+```
 
+Much better.
 
+We now create a plot that breaks the clusters down by weekday (or whatever we want).
+
+```{r plot split up by weekday}
 ggplot(cluster_dat_midweek,aes(x=YearDay,y=Speed,color=cluster))+
   geom_point()+
   facet_wrap(~Weekday,scales='free')+
@@ -372,8 +412,6 @@ ggplot(cluster_dat_midweek,aes(x=YearDay,y=Speed,color=cluster))+
 
 ```
 
-```{r}
-table(cluster_dat$Month)
-```
+
 
 
