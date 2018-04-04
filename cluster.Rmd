@@ -168,15 +168,7 @@ cluster_dat <- cluster_dat %>%
   as.data.frame()
 
 
-##add 1 or 0 if there was a weather event
-cluster_dat_melt <- reshape2::melt(cluster_dat,id.vars="Time_Bin",measure.vars=colnames(cluster_dat)[11:16])%>%
-  mutate(Hrs = as.numeric(format(value,"%H")),
-         Mins = as.numeric(format(value,"%M")))%>%
-  mutate(total = Hrs*60+Mins)%>%
-  group_by(Time_Bin)%>%
-  summarise(sum = sum(total))
-  
-cluster_dat$weather <- ifelse(cluster_dat_melt$sum>0,1,0)
+
 
 cluster_dat$Weekday <-  factor(cluster_dat$Weekday,levels=c("Sunday", "Monday", 
     "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
@@ -331,6 +323,19 @@ Public holidays seem to be the weekdays with highest speeds.
 
 ###Weather
 
+```{r add cumulative minutes for weather}
+##add 1 or 0 if there was a weather event
+cluster_dat_melt <- reshape2::melt(cluster_dat,id.vars="Time_Bin",measure.vars=colnames(cluster_dat)[11:16])%>%
+  mutate(Hrs = as.numeric(format(value,"%H")),
+         Mins = as.numeric(format(value,"%M")))%>%
+  mutate(total = Hrs*60+Mins)%>%
+  group_by(Time_Bin)%>%
+  summarise(sum = sum(total))
+  
+cluster_dat$weather <- cluster_dat_melt$sum
+#cluster_dat$weather <- ifelse(cluster_dat_melt$sum>0,1,0)
+```
+
 
 ##K Means Clustering
 
@@ -345,13 +350,20 @@ cluster_dat_midweek <- cluster_dat %>%
   filter(Weekday %ni% c('Saturday','Sunday'))
 
 #run kmeans
-speed_cluster <-  kmeans(cluster_dat_midweek%>%select(Speed,YearDay,weather)%>%scale(),centers = 5,nstart = 20)
+speed_cluster <-  kmeans(cluster_dat_midweek%>%select(Speed,YearDay,weather)%>%scale(),centers = 5,nstart = 10)
 
 ##add cluster to fitlered dataframe
 cluster_dat_midweek$cluster <- as.factor(speed_cluster$cluster)
 
-plotly::plot_ly(cluster_dat_midweek,x=~Time_Bin,y=~Speed,color=~cluster,type='scatter',mode='markers',
-               text=~paste('Weekday:',Weekday))
+plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,color=~cluster,mode='markers',text=~paste('Weekday:',Weekday))
+
+plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~weather,color=~cluster,hoverinfo='text',
+                text = ~paste('Speed:', round(Speed,2), '<br>Weather mins:', weather, '<br>Time_Bin:', format(Time_Bin,"%Y-%m-%d")))%>% 
+  add_markers()%>%
+    layout(scene = list(xaxis = list(title = 'Day of Year'),
+                     yaxis = list(title = 'Speed MPH'),
+                     zaxis = list(title = 'Weather mins')))
+
 
 ggplot(cluster_dat_midweek,aes(x=YearDay,y=Speed,color=cluster))+
   geom_point()+
