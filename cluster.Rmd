@@ -1,12 +1,12 @@
 ---
 title: "L04 Cluster Analysis"
-output: 
+output:
   html_document:
-    toc: true
+    toc: yes
     toc_depth: 3
-    toc_float: 
-      collapsed: false
-      smooth_scroll: true
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
 ---
 
 ```{r setup, include=FALSE,message=FALSE,echo=FALSE}
@@ -422,16 +422,17 @@ cluster_dat_midweek <- cluster_dat %>%
 ### Clustering
 
 ```{r Nbclust}
-set.seed(25)
+
 nc <- NbClust(cluster_dat_midweek%>%select(Speed,YearDay,Rain,Snow,Incident)%>%scale(), min.nc=2, max.nc=15, method="kmeans")
+
 ```
 
-We run the kmeans function with 8 centers and create a variable for the cluster designation. We will add this to our dataframe to facilitate plotting.
+We run the kmeans function with 5 centers and create a variable for the cluster designation. We will add this to our dataframe to facilitate plotting.
 
 ```{r run kmeans}
-set.seed(25)
+
 #run kmeans
-speed_cluster <-  kmeans(cluster_dat_midweek%>%select(Speed,YearDay,weather,Incident)%>%scale(),centers = 8,nstart = 25)
+speed_cluster <-  kmeans(cluster_dat_midweek%>%select(Speed,YearDay,Rain,Snow,Incident)%>%scale(),centers = 5,nstart = 25)
 
 ##add cluster to fitlered dataframe
 cluster_dat_midweek$cluster <- as.factor(speed_cluster$cluster)
@@ -460,11 +461,16 @@ we will try a 3d plot with weather on the z axis.
 
 plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~Snow,
                 color=~cluster, hoverinfo='text',
-                text = ~paste('Speed:', round(Speed,2), '<br>Snow mins:', weather, '<br>Time_Bin:', format(Time_Bin,"%Y-%m-%d")))%>% 
+                text = ~paste('Speed:', round(Speed,2), '<br>Snow mins:', Snow, '<br>Time_Bin:', format(Time_Bin,"%Y-%m-%d")))%>% 
   add_markers()%>%
-    layout(scene = list(xaxis = list(title = 'Day of Year'),
-                     yaxis = list(title = 'Speed MPH'),
-                     zaxis = list(title = 'Snow mins')))
+    layout(scene = list(xaxis = list(title = 'Day of Year',
+                                     range = c(0,max(cluster_dat_midweek$YearDay)),autorange=F),
+                     yaxis = list(title = 'Speed MPH',
+                                  range = c(min(cluster_dat_midweek$Speed),
+                                            max(cluster_dat_midweek$Speed))),
+                     zaxis = list(title = 'Snow mins',
+                                  range = c(min(cluster_dat_midweek$Snow),
+                                            max(cluster_dat_midweek$Snow)))))
 
 
 
@@ -483,11 +489,14 @@ plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~Incident,
                 color=~cluster, hoverinfo='text',
                 text = ~paste('Speed:', round(Speed,2), '<br>Incidents mins:', Incident, '<br>Time_Bin:', format(Time_Bin,"%Y-%m-%d")))%>% 
   add_markers()%>%
-    layout(scene = list(xaxis = list(title = 'Day of Year'),
-                     yaxis = list(title = 'Speed MPH'),
-                     zaxis = list(title = 'Incidents mins')))
-
-
+    layout(scene = list(xaxis = list(title = 'Day of Year',
+                                     range = c(0,max(cluster_dat_midweek$YearDay)),autorange=F),
+                     yaxis = list(title = 'Speed MPH',
+                                  range = c(min(cluster_dat_midweek$Speed),
+                                            max(cluster_dat_midweek$Speed))),
+                     zaxis = list(title = 'Snow mins',
+                                  range = c(min(cluster_dat_midweek$Incident),
+                                            max(cluster_dat_midweek$Incident)))))
 
 ```
 
