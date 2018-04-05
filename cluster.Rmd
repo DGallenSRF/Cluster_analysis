@@ -1,5 +1,5 @@
 ---
-title: "L04 Cluster"
+title: "L04 Cluster Analysis"
 output: 
   html_document:
     toc: true
@@ -9,7 +9,7 @@ output:
       smooth_scroll: true
 ---
 
-```{r include=FALSE,message=FALSE,echo=FALSE}
+```{r setup, include=FALSE,message=FALSE,echo=FALSE}
 #knitr::opts_knit$set(root.dir = "C:/Users/Declan/Desktop/Data/R/Cluster_analysis")
 knitr::opts_knit$set(root.dir = "H:/Projects/10000/10682/TS/Scenario Manager/Cluster Analysis/Cleaned")
 
@@ -20,6 +20,7 @@ library(reshape2)
 library(zoo)
 library(plotly)
 library(NbClust)
+library(stringr)
 ```
 
 ## Read Data
@@ -32,7 +33,7 @@ cluster_dat <- readxl::read_xlsx("Cluster Analysis Input Data.xlsx",sheet = 'Dat
 
 Examine cluster_dat.
 
-```{r structer of data}
+```{r structure of data}
 
 str(cluster_dat)
 ```
@@ -115,6 +116,11 @@ plot(cluster_dat$Density[cluster_dat$Incident_Count!=0],cluster_dat$Incident_Cou
      xlab="Density",ylab='Incident_Count')
 ```
 
+It appears that the incident count measures the amount on incidents in a specific time bin. The incident impact tracks how many impacts happened in a specific time_bin. This will allow us to determine how bad each time_bin is in terms of incidents.  
+
+There are no easily detectable patterns when plotting incidents vs time but we do see a strong positive correlation between Density and Incidents counts. This makes sense as intuitively the more cars, the more incidents. 
+
+
 We will focus on Incident Duration as a variable. We will add a variable 'Incident' that is a total incident minutes for each time bin.
 
 ```{r Incident Duration}
@@ -131,43 +137,42 @@ cluster_dat$Incident <- cluster_dat_incident_melt$sum
 
 ```
 
-We want to classify the Incident into severities. We will use the MNCMAT determination as a starting point for time bins:
 
-* Fatal 180 mins 
-* Incapacitating Injury 90 mins 
-* Non-Incapacitating Injury 45 mins 
-* Possible Injury 30 mins 
-* Property Damage 30 mins 
-* Unknown 30 mins
-
-Our time bins will be:
-+ = 0 mins, 
-+ 0 < x <= 30 mins, 
-+ 30 < x <= 45 mins, 
-+ 45 < x <= 90 mins,
-+ 90 < x <= 180 mins,
-+ 180 mins < x
-
-```{r incident severity bins}
-
-sev <-  data.frame(inc_sev=c('0 mins','30 mins','45 mins','90 mins','180 mins','> 180 mins'),
-                   symbol=c('circle', 'square', 'diamond','cross', 'x','triangle-down'))
+```{r incident severity bins, include=FALSE}
+# We want to classify the Incident into severities. We will use the MNCMAT determination as a starting point for time bins:
+# 
+# * Fatal 180 mins
+# * Incapacitating Injury 90 mins
+# * Non-Incapacitating Injury 45 mins
+# * Possible Injury 30 mins
+# * Property Damage 30 mins
+# * Unknown 30 mins
+# 
+# Our time bins will be:
+# + = 0 mins,
+# + 0 < x <= 30 mins,
+# + 30 < x <= 45 mins,
+# + 45 < x <= 90 mins,
+# + 90 < x <= 180 mins,
+# + 180 mins < x
 
 
-cluster_dat$inc_sev <- ifelse(cluster_dat$Incident==0,'0 mins',
-                              ifelse(cluster_dat$Incident>0&cluster_dat$Incident<30,'30 mins',
-                              ifelse(cluster_dat$Incident>30&cluster_dat$Incident<45,'45 mins',
-                              ifelse(cluster_dat$Incident>45&cluster_dat$Incident<90,'90 mins',
-                              ifelse(cluster_dat$Incident>90&cluster_dat$Incident<180,'180 mins',
-                              ifelse(cluster_dat$Incident>180,'> 180 mins','> 180 mins'))))))
 
-cluster_dat <- merge(cluster_dat,sev,by='inc_sev')
+# sev <-  data.frame(inc_sev=c('0 mins','30 mins','45 mins','90 mins','180 mins','> 180 mins'),
+#                    symbol=c('circle', 'square', 'diamond','cross', 'x','triangle-down'))
+# 
+# 
+# cluster_dat$inc_sev <- ifelse(cluster_dat$Incident==0,'0 mins',
+#                               ifelse(cluster_dat$Incident>0&cluster_dat$Incident<30,'30 mins',
+#                               ifelse(cluster_dat$Incident>30&cluster_dat$Incident<45,'45 mins',
+#                               ifelse(cluster_dat$Incident>45&cluster_dat$Incident<90,'90 mins',
+#                               ifelse(cluster_dat$Incident>90&cluster_dat$Incident<180,'180 mins',
+#                               ifelse(cluster_dat$Incident>180,'> 180 mins','> 180 mins'))))))
+# 
+# cluster_dat <- merge(cluster_dat,sev,by='inc_sev')
 ```
 
 
-It appears that the incident count measures the amount on incidents in a specific time bin. The incident impact tracks how many impacts happened in a specific time_bin. This will allow us to determine how bad each time_bin is in terms of incidents.  
-
-There are no easily detectable patterns when plotting incidents vs time but we do see a strong positive correlation between Density and Incidents counts. This makes sense as intuitively the more cars, the more incidents. 
 
 ### Roadwork
 
@@ -350,7 +355,7 @@ Looks like we have some reduced speeds in the Summer months, maybe due to constr
 There are also some slower days in the winter months which could very easily be due to bad weather. 
 But there are no noticeable patterns. 
 
-```{r}
+```{r speed vs week}
 ggplot(cluster_dat,aes(x=Week,y=Speed,color=Weekday))+
   geom_point(aplha=0.25)+
   geom_smooth()
@@ -360,7 +365,7 @@ Again we are seeing a pattern with reduced speeds on weekends.
 
 Lets look at public holidays:
 
-```{r}
+```{r create holiday list}
 hols_2017 <- as.POSIXct(c('2017-01-02 14:00','2017-05-29 14:00','2017-07-03 14:00','2017-07-04 14:00','2017-09-04 14:00','2017-11-23 14:00','2017-11-24 14:00','2017-12-25 14:00'))
 table(cluster_dat$Time_Bin %in% hols_2017)
 
@@ -387,12 +392,15 @@ We need to generate a total minute count for weather events in each time bin.
 ##create a total sum value for minutes of weather events in each time bin.
 cluster_dat_melt <- reshape2::melt(cluster_dat,id.vars="Time_Bin",measure.vars=c("Light_Rain","Light_Snow","Moderate_Rain","Moderate_Snow","Heavy_Snow","Heavy_Rain"))%>%
   mutate(Hrs = as.numeric(format(value,"%H")),
-         Mins = as.numeric(format(value,"%M")))%>%
+         Mins = as.numeric(format(value,"%M")),
+         Percip = str_sub(variable,-4))%>%
   mutate(total = Hrs*60+Mins)%>%
-  group_by(Time_Bin)%>%
-  summarise(sum = sum(total))
+  group_by(Time_Bin,Percip)%>%
+  summarise(sum = sum(total))%>%
+  dcast(Time_Bin~Percip,value.var = 'sum')
   
-cluster_dat$weather <- cluster_dat_melt$sum
+cluster_dat$Rain <- cluster_dat_melt$Rain
+cluster_dat$Snow <- cluster_dat_melt$Snow
 
 
 ```
@@ -401,6 +409,7 @@ cluster_dat$weather <- cluster_dat_melt$sum
 ## K Means Clustering
 
 First we filter out the weekends. We already determined that they will have their own cluster. 
+### Clean Data
 
 ```{r filter midweek}
 
@@ -410,24 +419,29 @@ cluster_dat_midweek <- cluster_dat %>%
   filter(Weekday %ni% c('Saturday','Sunday'))
 ```
 
+### Clustering
 
 ```{r Nbclust}
 set.seed(25)
-nc <- NbClust(cluster_dat_midweek%>%select(Speed,YearDay,weather,Incident)%>%scale(), min.nc=2, max.nc=15, method="kmeans")
+nc <- NbClust(cluster_dat_midweek%>%select(Speed,YearDay,Rain,Snow,Incident)%>%scale(), min.nc=2, max.nc=15, method="kmeans")
 ```
 
-We run the kmeans function with 4 centers and create a variable for the cluster designation. We will add this to our dataframe to facilitate plotting.
+We run the kmeans function with 8 centers and create a variable for the cluster designation. We will add this to our dataframe to facilitate plotting.
 
 ```{r run kmeans}
 set.seed(25)
 #run kmeans
-speed_cluster <-  kmeans(cluster_dat_midweek%>%select(Speed,YearDay,weather,Incident)%>%scale(),centers = 3,nstart = 10)
+speed_cluster <-  kmeans(cluster_dat_midweek%>%select(Speed,YearDay,weather,Incident)%>%scale(),centers = 8,nstart = 25)
 
 ##add cluster to fitlered dataframe
 cluster_dat_midweek$cluster <- as.factor(speed_cluster$cluster)
 ```
 
+### Plots
+
 We will look at some plots to display the clusters.
+
+#### 2D Plot Year Day ~ Speed
 
 First a simple 2d plot
 
@@ -437,18 +451,20 @@ plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,color=~cluster,type='sca
 
 The 2d plot does not do a good job of showing where the clusters split.
 
-we will try a 3d plot.
+#### 3D Plot Year Day ~ Speed, Snow
+
+we will try a 3d plot with weather on the z axis.
 
 ```{r 3d plot weather}
 #3d plot to better show
 
-plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~weather,
+plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~Snow,
                 color=~cluster, hoverinfo='text',
-                text = ~paste('Speed:', round(Speed,2), '<br>Weather mins:', weather, '<br>Time_Bin:', format(Time_Bin,"%Y-%m-%d")))%>% 
+                text = ~paste('Speed:', round(Speed,2), '<br>Snow mins:', weather, '<br>Time_Bin:', format(Time_Bin,"%Y-%m-%d")))%>% 
   add_markers()%>%
     layout(scene = list(xaxis = list(title = 'Day of Year'),
                      yaxis = list(title = 'Speed MPH'),
-                     zaxis = list(title = 'Weather mins')))
+                     zaxis = list(title = 'Snow mins')))
 
 
 
@@ -456,14 +472,16 @@ plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~weather,
 
 Much better.
 
-Now lets look at Incidents
+#### 3D Plot Year Day ~ Speed, Incidents
 
-```{r 3d plot weather}
+Now lets look at Incidents on the z axis.
+
+```{r 3d plot incident}
 #3d plot to better show
 
 plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~Incident,
                 color=~cluster, hoverinfo='text',
-                text = ~paste('Speed:', round(Speed,2), '<br>Incidents mins:', weather, '<br>Time_Bin:', format(Time_Bin,"%Y-%m-%d")))%>% 
+                text = ~paste('Speed:', round(Speed,2), '<br>Incidents mins:', Incident, '<br>Time_Bin:', format(Time_Bin,"%Y-%m-%d")))%>% 
   add_markers()%>%
     layout(scene = list(xaxis = list(title = 'Day of Year'),
                      yaxis = list(title = 'Speed MPH'),
@@ -473,6 +491,7 @@ plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~Incident,
 
 ```
 
+#### Plot Split by Weekdays
 
 We now create a plot that breaks the clusters down by weekday (or whatever we want).
 
