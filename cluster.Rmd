@@ -2,8 +2,9 @@
 title: "L04 Cluster Analysis"
 output:
   html_document:
+    df_print: paged
     toc: yes
-    toc_depth: 3
+    toc_depth: 2
     toc_float:
       collapsed: no
       smooth_scroll: yes
@@ -23,7 +24,7 @@ library(NbClust)
 library(stringr)
 ```
 
-## Read Data
+# Read Data
 
 Read data from Cluster Analysis Input Data.xlsx. From examining the file via Excel, we see that the data is located in the tab named "Database". We call that tab in the read_xlsx function.
 
@@ -50,7 +51,7 @@ colnames(cluster_dat) <-gsub('([[:punct:]])|\\s+','_',colnames(cluster_dat))
 colnames(cluster_dat)
 ```
 
-## DateTime
+# DateTime
 
 We look to fix the DateTime fields. The first five columns looks to be parsed versions of a DateTime. The 'Time Bin' looks to be the most complete DateTime variable. Examine further...
 
@@ -83,9 +84,9 @@ cluster_dat[cluster_dat$Week==53,c(1:5,length(cluster_dat))]
 
 Week 53 represents the last day of the year. We will ignore this field.
 
-## Traffic Incidents
+# Traffic Incidents
 
-### Incidents
+## Incidents
 ```{r incident summary}
 summary(cluster_dat$Incident_Count)
 ```
@@ -174,7 +175,7 @@ cluster_dat$Incident <- cluster_dat_incident_melt$sum
 
 
 
-### Roadwork
+## Roadwork
 
 ```{r summary roadwork count}
 summary(cluster_dat$Roadwork_Count)
@@ -212,7 +213,7 @@ Majority of days have no Roadwork. One really bad day with 7. No obvious outlier
 
 
 
-## Metrics
+# Metrics
 
 Lets look at the Density, Volume, Speed variables. Again there are columns without names mixed in between these fields. We will ignore the unnamed variables.
 
@@ -390,7 +391,7 @@ We need to generate a total minute count for weather events in each time bin.
 
 ```{r add cumulative minutes for weather}
 ##create a total sum value for minutes of weather events in each time bin.
-cluster_dat_melt <- reshape2::melt(cluster_dat,id.vars="Time_Bin",measure.vars=c("Light_Rain","Light_Snow","Moderate_Rain","Moderate_Snow","Heavy_Snow","Heavy_Rain"))%>%
+cluster_dat_melt_RS <- reshape2::melt(cluster_dat,id.vars="Time_Bin",measure.vars=c("Light_Rain","Light_Snow","Moderate_Rain","Moderate_Snow","Heavy_Snow","Heavy_Rain"))%>%
   mutate(Hrs = as.numeric(format(value,"%H")),
          Mins = as.numeric(format(value,"%M")),
          Percip = str_sub(variable,-4))%>%
@@ -399,17 +400,24 @@ cluster_dat_melt <- reshape2::melt(cluster_dat,id.vars="Time_Bin",measure.vars=c
   summarise(sum = sum(total))%>%
   dcast(Time_Bin~Percip,value.var = 'sum')
   
-cluster_dat$Rain <- cluster_dat_melt$Rain
-cluster_dat$Snow <- cluster_dat_melt$Snow
+cluster_dat_melt_weather <- reshape2::melt(cluster_dat,id.vars="Time_Bin",measure.vars=colnames(cluster_dat)[11:16])%>%
+  mutate(Hrs = as.numeric(format(value,"%H")),
+         Mins = as.numeric(format(value,"%M")))%>%
+  mutate(total = Hrs*60+Mins)%>%
+  group_by(Time_Bin)%>%
+  summarise(sum = sum(total))
+  
+cluster_dat$weather <- cluster_dat_melt_weather$sum
 
+cluster_dat$Rain <- cluster_dat_melt_RS$Rain
+cluster_dat$Snow <- cluster_dat_melt_RS$Snow
 
+rm(cluster_dat_melt_RS,cluster_dat_melt_weather)
 ```
 
+Now we filter out the weekends. We already determined that they will have their own cluster. 
 
-## K Means Clustering
-
-First we filter out the weekends. We already determined that they will have their own cluster. 
-### Clean Data
+## Filter Weekends
 
 ```{r filter midweek}
 
@@ -417,11 +425,17 @@ First we filter out the weekends. We already determined that they will have thei
 '%ni%' <- Negate('%in%')
 cluster_dat_midweek <- cluster_dat %>% 
   filter(Weekday %ni% c('Saturday','Sunday'))
+
+## K Means Clustering {.tabset .tabset-fade}
+
+
 ```
 
-### Clustering
+# Clustering {.tabset .tabset-fade}
 
-```{r Nbclust}
+## Day of Year vs Speed
+
+```{r Nbclust day~year}
 
 nc <- NbClust(cluster_dat_midweek%>%select(Speed,YearDay,Rain,Snow,Incident)%>%scale(), min.nc=2, max.nc=15, method="kmeans")
 
@@ -429,8 +443,8 @@ nc <- NbClust(cluster_dat_midweek%>%select(Speed,YearDay,Rain,Snow,Incident)%>%s
 
 We run the kmeans function with 5 centers and create a variable for the cluster designation. We will add this to our dataframe to facilitate plotting.
 
-```{r run kmeans}
-
+```{r run kmeans day~year}
+set.seed(250)
 #run kmeans
 speed_cluster <-  kmeans(cluster_dat_midweek%>%select(Speed,YearDay,Rain,Snow,Incident)%>%scale(),centers = 5,nstart = 25)
 
@@ -438,30 +452,179 @@ speed_cluster <-  kmeans(cluster_dat_midweek%>%select(Speed,YearDay,Rain,Snow,In
 cluster_dat_midweek$cluster <- as.factor(speed_cluster$cluster)
 ```
 
-### Plots
 
 We will look at some plots to display the clusters.
 
-#### 2D Plot Year Day ~ Speed
+2D Plot Year Day ~ Speed
 
-First a simple 2d plot
+A standard 2d plot.
 
-```{r 2d plots}
+```{r 2d plots day~year}
 plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,color=~cluster,type='scatter',mode='markers',text=~paste('Time_Bin:', format(Time_Bin,"%Y-%m-%d")))
 ```
 
 The 2d plot does not do a good job of showing where the clusters split.
 
-#### 3D Plot Year Day ~ Speed, Snow
+
+## Year Day ~ Speed ~ Weather
+
+```{r Nbclust day~year~weather}
+set.seed(250)
+nc <- NbClust(cluster_dat_midweek%>%select(Speed,YearDay,weather)%>%scale(), min.nc=2, max.nc=15, method="kmeans")
+
+```
+
+We run the kmeans function with 5 centers and create a variable for the cluster designation. We will add this to our dataframe to facilitate plotting.
+
+```{r run kmeans day~year~weather}
+set.seed(250)
+#run kmeans
+speed_cluster <-  kmeans(cluster_dat_midweek%>%select(Speed,YearDay,weather)%>%scale(),centers = 5,nstart = 25)
+
+##add cluster to fitlered dataframe
+cluster_dat_midweek$cluster <- as.factor(speed_cluster$cluster)
+```
+
+
+We will look at some plots to display the clusters.
+
+2D Plot Year Day ~ Speed
+
+First a simple 2d plot
+
+```{r 2d plots day~year~weather}
+plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,color=~cluster,type='scatter',mode='markers',text=~paste('Time_Bin:', format(Time_Bin,"%Y-%m-%d")))
+```
+
+The 2d plot does not do a good job of showing where the clusters split.
+
+3D Plot Year Day ~ Speed ~ Weather
 
 we will try a 3d plot with weather on the z axis.
 
-```{r 3d plot weather}
+```{r 3d day~year~weather}
+#3d plot to better show
+
+plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~weather,
+                color=~cluster, hoverinfo='text',
+                text = ~paste('Speed:', round(Speed,2), '<br>Weather mins:', weather, '<br>Time_Bin:', format(Time_Bin,"%Y-%m-%d")))%>% 
+  add_markers()%>%
+    layout(scene = list(xaxis = list(title = 'Day of Year',
+                                     range = c(0,max(cluster_dat_midweek$YearDay)),autorange=F),
+                     yaxis = list(title = 'Speed MPH',
+                                  range = c(min(cluster_dat_midweek$Speed),
+                                            max(cluster_dat_midweek$Speed))),
+                     zaxis = list(title = 'Weather mins',
+                                  range = c(min(cluster_dat_midweek$weather),
+                                            max(cluster_dat_midweek$weather)))))
+
+
+
+```
+
+Much better.
+
+
+
+## Year Day ~ Speed ~ Weather ~ Incident
+
+```{r Nbclust day~year~weather~incident}
+set.seed(250)
+nc <- NbClust(cluster_dat_midweek%>%select(Speed,YearDay,weather, Incident)%>%scale(), min.nc=2, max.nc=15, method="kmeans")
+
+```
+
+We run the kmeans function with 5 centers and create a variable for the cluster designation. We will add this to our dataframe to facilitate plotting.
+
+```{r run kmeans day~year~weather~incident}
+set.seed(250)
+#run kmeans
+speed_cluster <-  kmeans(cluster_dat_midweek%>%select(Speed,YearDay,weather, Incident)%>%scale(),centers = 5,nstart = 25)
+
+##add cluster to fitlered dataframe
+cluster_dat_midweek$cluster <- as.factor(speed_cluster$cluster)
+```
+
+
+We will look at some plots to display the clusters.
+
+
+```{r 3d day~year~weather~incident}
+#3d plot to better show
+
+plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~weather,
+                color=~cluster, hoverinfo='text',
+                text = ~paste('Speed:', round(Speed,2), '<br>Weather mins:', weather, '<br>Time_Bin:', format(Time_Bin,"%Y-%m-%d")))%>% 
+  add_markers()%>%
+    layout(scene = list(xaxis = list(title = 'Day of Year',
+                                     range = c(0,max(cluster_dat_midweek$YearDay)),autorange=F),
+                     yaxis = list(title = 'Speed MPH',
+                                  range = c(min(cluster_dat_midweek$Speed),
+                                            max(cluster_dat_midweek$Speed))),
+                     zaxis = list(title = 'Weather mins',
+                                  range = c(min(cluster_dat_midweek$weather),
+                                            max(cluster_dat_midweek$weather)))))
+
+
+
+```
+
+Much better.
+
+
+3D Plot Year Day ~ Speed, Incidents
+
+Now lets look at Incidents on the z axis.
+
+```{r 3d plot day~year~weather~incident}
+#3d plot to better show
+
+plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~Incident,
+                color=~cluster, hoverinfo='text',
+                text = ~paste('Speed:', round(Speed,2), '<br>Incidents mins:', Incident, '<br>Time_Bin:', format(Time_Bin,"%Y-%m-%d")))%>% 
+  add_markers()%>%
+    layout(scene = list(xaxis = list(title = 'Day of Year',
+                                     range = c(0,max(cluster_dat_midweek$YearDay)),autorange=F),
+                     yaxis = list(title = 'Speed MPH',
+                                  range = c(min(cluster_dat_midweek$Speed),
+                                            max(cluster_dat_midweek$Speed))),
+                     zaxis = list(title = 'Incident mins',
+                                  range = c(min(cluster_dat_midweek$Incident),
+                                            max(cluster_dat_midweek$Incident)))))
+
+```
+
+
+
+## Year Day ~ Speed ~Rain ~ Snow ~ Incident
+
+```{r Nbclust day~year~rain~snow~incident}
+set.seed(250)
+nc <- NbClust(cluster_dat_midweek%>%select(Speed,YearDay,Rain, Snow, Incident)%>%scale(), min.nc=2, max.nc=15, method="kmeans")
+
+```
+
+We run the kmeans function with 5 centers and create a variable for the cluster designation. We will add this to our dataframe to facilitate plotting.
+
+```{r run kmeans day~year~rain~snow~incident}
+set.seed(250)
+#run kmeans
+speed_cluster <-  kmeans(cluster_dat_midweek%>%select(Speed,YearDay,Rain,Snow, Incident)%>%scale(),centers = 5,nstart = 25)
+
+##add cluster to fitlered dataframe
+cluster_dat_midweek$cluster <- as.factor(speed_cluster$cluster)
+```
+
+
+We will look at some plots to display the clusters.
+
+
+```{r 3d day~year~rain~snow~incident}
 #3d plot to better show
 
 plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~Snow,
                 color=~cluster, hoverinfo='text',
-                text = ~paste('Speed:', round(Speed,2), '<br>Snow mins:', Snow, '<br>Time_Bin:', format(Time_Bin,"%Y-%m-%d")))%>% 
+                text = ~paste('Speed:', round(Speed,2), '<br>Weather mins:', weather, '<br>Time_Bin:', format(Time_Bin,"%Y-%m-%d")))%>% 
   add_markers()%>%
     layout(scene = list(xaxis = list(title = 'Day of Year',
                                      range = c(0,max(cluster_dat_midweek$YearDay)),autorange=F),
@@ -478,11 +641,12 @@ plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~Snow,
 
 Much better.
 
-#### 3D Plot Year Day ~ Speed, Incidents
+
+3D Plot Year Day ~ Speed, Incidents
 
 Now lets look at Incidents on the z axis.
 
-```{r 3d plot incident}
+```{r 3d plot day~year~rain~snow~incident}
 #3d plot to better show
 
 plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~Incident,
@@ -494,24 +658,11 @@ plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~Incident,
                      yaxis = list(title = 'Speed MPH',
                                   range = c(min(cluster_dat_midweek$Speed),
                                             max(cluster_dat_midweek$Speed))),
-                     zaxis = list(title = 'Snow mins',
+                     zaxis = list(title = 'Incident mins',
                                   range = c(min(cluster_dat_midweek$Incident),
                                             max(cluster_dat_midweek$Incident)))))
 
 ```
-
-#### Plot Split by Weekdays
-
-We now create a plot that breaks the clusters down by weekday (or whatever we want).
-
-```{r plot split up by weekday}
-ggplot(cluster_dat_midweek,aes(x=YearDay,y=Speed,color=cluster))+
-  geom_point()+
-  facet_wrap(~Weekday,scales='free')+
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))
-
-```
-
 
 
 
