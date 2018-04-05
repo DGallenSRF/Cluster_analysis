@@ -428,6 +428,8 @@ cluster_dat_midweek <- cluster_dat %>%
 
 ## K Means Clustering {.tabset .tabset-fade}
 
+cluster_dat_weekend <- cluster_dat %>% 
+  filter(Weekday %in% c('Saturday','Sunday'))
 
 ```
 
@@ -474,15 +476,32 @@ nc <- NbClust(cluster_dat_midweek%>%select(Speed,YearDay,weather)%>%scale(), min
 
 ```
 
-We run the kmeans function with 5 centers and create a variable for the cluster designation. We will add this to our dataframe to facilitate plotting.
+We run the kmeans function with 4 centers and create a variable for the cluster designation. We will add this to our dataframe to facilitate plotting.
 
 ```{r run kmeans day~year~weather}
 set.seed(250)
 #run kmeans
-speed_cluster <-  kmeans(cluster_dat_midweek%>%select(Speed,YearDay,weather)%>%scale(),centers = 5,nstart = 25)
+dat <- cluster_dat_midweek%>%select(Speed,YearDay,weather)%>%scale()%>%as.data.frame()
+speed_cluster <-  kmeans(dat,centers = 4,nstart = 25)
 
 ##add cluster to fitlered dataframe
-cluster_dat_midweek$cluster <- as.factor(speed_cluster$cluster)
+#cluster_dat_midweek$cluster <- as.factor(speed_cluster$cluster)
+dat_scale <- cluster_dat_midweek%>%select(Time_Bin,Speed,YearDay,weather)%>%
+  mutate(Speed = scale(Speed),
+         YearDay = scale(YearDay),
+         weather = scale(weather))
+dat_scale$cluster <- as.factor(speed_cluster$cluster) 
+dat_scale <-  melt(dat_scale,id = c('Time_Bin','cluster'))
+
+centers <- as.data.frame(speed_cluster$centers)
+centers$cluster <- seq(1,nrow(centers),1)
+centers <- melt(centers,id='cluster')
+
+j <- merge(centers,dat_scale,by=c('cluster','variable'))%>%mutate((value.x-value.y)^2)
+ja <- j %>% group_by(cluster,variable)%>%slice(which.min(value.x-value.y))
+
+
+
 ```
 
 
@@ -662,6 +681,15 @@ plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~Incident,
                                   range = c(min(cluster_dat_midweek$Incident),
                                             max(cluster_dat_midweek$Incident)))))
 
+```
+
+# Write final file
+
+```{r final file}
+cluster_dat_weekend$cluster <- as.factor(max(as.numeric(cluster_dat_midweek$cluster)+1))
+final_cluster <- select(cluster_dat_midweek,Time_Bin,cluster)%>%rbind(select(cluster_dat_weekend,Time_Bin,cluster))
+
+write.csv(final_cluster,'final_cluster.csv',row.names = FALSE)
 ```
 
 
