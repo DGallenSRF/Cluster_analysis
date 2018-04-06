@@ -22,6 +22,7 @@ library(zoo)
 library(plotly)
 library(NbClust)
 library(stringr)
+library(ggthemes)
 ```
 
 # Read Data
@@ -357,9 +358,12 @@ There are also some slower days in the winter months which could very easily be 
 But there are no noticeable patterns. 
 
 ```{r speed vs week}
-ggplot(cluster_dat,aes(x=Week,y=Speed,color=Weekday))+
+ggplot(cluster_dat,aes(x=YearDay,y=Speed,color=Weekday))+
   geom_point(aplha=0.25)+
-  geom_smooth()
+  geom_smooth()+
+  theme_solarized()+scale_colour_solarized('blue')+
+  ggtitle('Speed per Day grouped by Weekday')+
+  theme(plot.title = element_text(hjust = 0.5))
 ```
 
 Again we are seeing a pattern with reduced speeds on weekends. 
@@ -433,22 +437,22 @@ cluster_dat_weekend <- cluster_dat %>%
 
 ```
 
-# Clustering {.tabset .tabset-fade}
+# Clustering {.tabset .tabset-fade .tabset-pills}
 
 ## Day of Year vs Speed
 
 ```{r Nbclust day~year}
 
-nc <- NbClust(cluster_dat_midweek%>%select(Speed,YearDay,Rain,Snow,Incident)%>%scale(), min.nc=2, max.nc=15, method="kmeans")
+nc <- NbClust(cluster_dat_midweek%>%select(Speed,YearDay)%>%scale(), min.nc=2, max.nc=15, method="kmeans")
 
 ```
 
-We run the kmeans function with 5 centers and create a variable for the cluster designation. We will add this to our dataframe to facilitate plotting.
+We run the kmeans function with 3 centers and create a variable for the cluster designation. We will add this to our dataframe to facilitate plotting.
 
-```{r run kmeans day~year}
+```{r run kmeans day~speed}
 set.seed(250)
 #run kmeans
-speed_cluster <-  kmeans(cluster_dat_midweek%>%select(Speed,YearDay,Rain,Snow,Incident)%>%scale(),centers = 5,nstart = 25)
+speed_cluster <-  kmeans(cluster_dat_midweek%>%select(YearDay,Speed)%>%scale(),centers = 3,nstart = 25)
 
 ##add cluster to fitlered dataframe
 cluster_dat_midweek$cluster <- as.factor(speed_cluster$cluster)
@@ -462,10 +466,12 @@ We will look at some plots to display the clusters.
 A standard 2d plot.
 
 ```{r 2d plots day~year}
-plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,color=~cluster,type='scatter',mode='markers',text=~paste('Time_Bin:', format(Time_Bin,"%Y-%m-%d")))
+# plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,color=~cluster,type='scatter',mode='markers',text=~paste('Time_Bin:', format(Time_Bin,"%Y-%m-%d")))
+
+ggplot(cluster_dat_midweek)+geom_point(aes(x=YearDay,y=Speed,color=cluster))+ggtitle('Average Speed per Day of year \n split into 5 clusters')+theme_solarized()+scale_colour_solarized('blue')+theme(plot.title = element_text(hjust = 0.5))
 ```
 
-The 2d plot does not do a good job of showing where the clusters split.
+
 
 
 ## Year Day ~ Speed ~ Weather
@@ -485,21 +491,7 @@ dat <- cluster_dat_midweek%>%select(Speed,YearDay,weather)%>%scale()%>%as.data.f
 speed_cluster <-  kmeans(dat,centers = 4,nstart = 25)
 
 ##add cluster to fitlered dataframe
-#cluster_dat_midweek$cluster <- as.factor(speed_cluster$cluster)
-dat_scale <- cluster_dat_midweek%>%select(Time_Bin,Speed,YearDay,weather)%>%
-  mutate(Speed = scale(Speed),
-         YearDay = scale(YearDay),
-         weather = scale(weather))
-dat_scale$cluster <- as.factor(speed_cluster$cluster) 
-dat_scale <-  melt(dat_scale,id = c('Time_Bin','cluster'))
-
-centers <- as.data.frame(speed_cluster$centers)
-centers$cluster <- seq(1,nrow(centers),1)
-centers <- melt(centers,id='cluster')
-
-j <- merge(centers,dat_scale,by=c('cluster','variable'))%>%mutate((value.x-value.y)^2)
-ja <- j %>% group_by(cluster,variable)%>%slice(which.min(value.x-value.y))
-
+cluster_dat_midweek$Cluster <- as.factor(speed_cluster$cluster)
 
 
 ```
@@ -507,17 +499,24 @@ ja <- j %>% group_by(cluster,variable)%>%slice(which.min(value.x-value.y))
 
 We will look at some plots to display the clusters.
 
-2D Plot Year Day ~ Speed
+#### 2D Plot Year Day ~ Speed
 
 First a simple 2d plot
 
 ```{r 2d plots day~year~weather}
-plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,color=~cluster,type='scatter',mode='markers',text=~paste('Time_Bin:', format(Time_Bin,"%Y-%m-%d")))
+# plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,color=~cluster,type='scatter',mode='markers',text=~paste('Time_Bin:', format(Time_Bin,"%Y-%m-%d")))
+
+ggplot(cluster_dat_midweek)+geom_point(aes(x=YearDay,y=Speed,color=Cluster))+
+  ggtitle('Average Speed per Day of year and weather \n condition split into 4 clusters')+
+  theme_solarized()+
+  scale_colour_solarized('blue')+
+  theme(plot.title = element_text(hjust = 0.5))
+
 ```
 
 The 2d plot does not do a good job of showing where the clusters split.
 
-3D Plot Year Day ~ Speed ~ Weather
+#### 3D Plot Year Day ~ Speed ~ Weather
 
 we will try a 3d plot with weather on the z axis.
 
@@ -543,7 +542,7 @@ plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~weather,
 
 Much better.
 
-
+***
 
 ## Year Day ~ Speed ~ Weather ~ Incident
 
@@ -553,12 +552,13 @@ nc <- NbClust(cluster_dat_midweek%>%select(Speed,YearDay,weather, Incident)%>%sc
 
 ```
 
-We run the kmeans function with 5 centers and create a variable for the cluster designation. We will add this to our dataframe to facilitate plotting.
+We run the kmeans function with 3 centers and create a variable for the cluster designation. We will add this to our dataframe to facilitate plotting.
+
 
 ```{r run kmeans day~year~weather~incident}
 set.seed(250)
 #run kmeans
-speed_cluster <-  kmeans(cluster_dat_midweek%>%select(Speed,YearDay,weather, Incident)%>%scale(),centers = 5,nstart = 25)
+speed_cluster <-  kmeans(cluster_dat_midweek%>%select(Speed,YearDay,weather, Incident)%>%scale(),centers = 3,nstart = 25)
 
 ##add cluster to fitlered dataframe
 cluster_dat_midweek$cluster <- as.factor(speed_cluster$cluster)
@@ -567,6 +567,7 @@ cluster_dat_midweek$cluster <- as.factor(speed_cluster$cluster)
 
 We will look at some plots to display the clusters.
 
+#### 3D Plot Year Day ~ Speed ~ Weather
 
 ```{r 3d day~year~weather~incident}
 #3d plot to better show
@@ -588,10 +589,9 @@ plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~weather,
 
 ```
 
-Much better.
 
 
-3D Plot Year Day ~ Speed, Incidents
+#### 3D Plot Year Day ~ Speed ~ Incidents
 
 Now lets look at Incidents on the z axis.
 
@@ -614,6 +614,7 @@ plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~Incident,
 ```
 
 
+***
 
 ## Year Day ~ Speed ~Rain ~ Snow ~ Incident
 
@@ -637,11 +638,12 @@ cluster_dat_midweek$cluster <- as.factor(speed_cluster$cluster)
 
 We will look at some plots to display the clusters.
 
+#### 3D Plot Year Day ~ Speed ~ weather
 
 ```{r 3d day~year~rain~snow~incident}
 #3d plot to better show
 
-plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~Snow,
+plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~weather,
                 color=~cluster, hoverinfo='text',
                 text = ~paste('Speed:', round(Speed,2), '<br>Weather mins:', weather, '<br>Time_Bin:', format(Time_Bin,"%Y-%m-%d")))%>% 
   add_markers()%>%
@@ -658,10 +660,10 @@ plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~Snow,
 
 ```
 
-Much better.
 
 
-3D Plot Year Day ~ Speed, Incidents
+
+#### 3D Plot Year Day ~ Speed ~ Incidents
 
 Now lets look at Incidents on the z axis.
 
@@ -682,6 +684,8 @@ plotly::plot_ly(cluster_dat_midweek,x=~YearDay,y=~Speed,z=~Incident,
                                             max(cluster_dat_midweek$Incident)))))
 
 ```
+
+***
 
 # Write final file
 
